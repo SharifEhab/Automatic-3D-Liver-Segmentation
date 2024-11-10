@@ -1,1 +1,1 @@
-# 3D-Liver-Segmentation-using-MONAI-and-Pytorch
+# 3D Liver Segmentation using MONAI and Pytorch
