@@ -71,7 +71,7 @@ def find_empty(in_niftiprocessed_segmentation_dir):
             print(segmentation)
 
 
-def prepare(in_dir, pixdim=(1.5,1.5,1.0), a_min = -200, a_max = 200, spatial_size = [128,128,128], cache = True):
+def prepare_data_loader(in_dir, pixdim=(1.5,1.5,1.0), a_min = -200, a_max = 200, spatial_size = [128,128,128], cache = False):
     """
     This function is the main function for the preprocessing of the data, it 
     contains chaining of basic transforms that are applied to the data using the monai library.
@@ -100,6 +100,13 @@ def prepare(in_dir, pixdim=(1.5,1.5,1.0), a_min = -200, a_max = 200, spatial_siz
 
     Purpose: Loads image and label files into memory as dictionaries with keys specified in keys.
     Effect: Converts file paths to actual image data (e.g., numpy arrays).
+    The files are decompressed and loaded as NumPy arrays internally using nibabel or a similar backend.
+    After loading, the NumPy arrays replace the file paths in the dictionary under the same keys
+    {"vol": numpy_array_for_volume, "seg": numpy_array_for_segmentation}
+
+    After applying LoadImaged, the dataset or data loader now processes dictionaries where:
+
+    The keys ("vol", "seg") map to the loaded NumPy arrays instead of file paths.
 
     EnsureChannelFirstD:
 
@@ -135,6 +142,9 @@ def prepare(in_dir, pixdim=(1.5,1.5,1.0), a_min = -200, a_max = 200, spatial_siz
 
     Purpose: Converts numpy arrays or other formats to PyTorch tensors.
     Effect: Prepares the data for models using PyTorch.
+    After Full Transform Pipeline: PyTorch tensors stored in the dictionary.
+
+
     """
     #monai transforms
     train_transforms = Compose([
