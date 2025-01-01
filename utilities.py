@@ -1,6 +1,7 @@
 from monai.utils import first
 import matplotlib.pyplot as plt
 import torch 
+from torch.amp import GradScaler, autocast  # Correct import
 import os
 import numpy as np
 from monai.losses import DiceLoss
@@ -8,6 +9,22 @@ from tqdm import tqdm
 
 
 def dice_metric(pred, target):
+    """
+    Calculate the Dice metric for the predicted and target tensors.
+
+    The Dice metric is a measure of overlap between two samples and is commonly
+    used to evaluate the performance of image segmentation algorithms. It ranges
+    from 0 to 1, where 1 indicates perfect overlap and 0 indicates no overlap.
+
+    Parameters:
+        pred (torch.Tensor): The predicted tensor, typically the output from a network.
+        target (torch.Tensor): The ground truth tensor.
+
+    Returns:
+        float: The Dice metric value, representing the similarity between the
+               predicted and target tensors.
+    """
+
     dice_value = DiceLoss(to_onehot_y=True, softmax=True, squared_pred=True)
     value = 1 - dice_value(pred, target).item()
     return value
@@ -25,7 +42,31 @@ def calculate_weights(no_foreground_pixels, no_background_pixels):
     weights_normalized = adjusted_weights / adjusted_weights.sum() # normalize the adjusted weights
     return torch.tensor(weights_normalized, dtype=torch.float32)
 
-def train(model, dataloader, loss_function, optimizer,max_epochs, model_dir, test_interval =1, device = torch.device("cuda:0")):
+def train(model, dataloader, loss_function, optimizer,max_epochs, model_dir, test_interval =1, device = torch.device("cuda:0"), logger = None, log_freq = 50):
+    """
+    Train a deep learning model using a specified data loader, loss function, and optimizer.
+
+    Parameters:
+        model (torch.nn.Module): The model to be trained.
+        dataloader (tuple): A tuple containing the training and testing data loaders.
+        loss_function (callable): The loss function used to calculate the error.
+        optimizer (torch.optim.Optimizer): The optimizer to update the model parameters.
+        max_epochs (int): The maximum number of epochs to train the model.
+        model_dir (str): The directory where the model and metrics are saved.
+        test_interval (int, optional): The interval (in epochs) to perform testing. Default is 1.
+        device (torch.device, optional): The device to use for training (CPU or GPU). Default is GPU if available.
+
+    This function performs training over a specified number of epochs. During each epoch, it iterates through the
+    training dataset, computes the loss, performs backpropagation, and updates the model parameters. It also calculates
+    and prints the dice metric for each batch. The average loss and dice metric for each epoch are saved to files.
+
+    At specified intervals, the model is evaluated on the test dataset, where the average loss and dice metric are 
+    calculated and saved. The model with the best dice metric is saved as 'best_metric_model.pth'.
+
+    Returns:
+        None
+    """
+
     best_metric = -1
     best_metric_epoch = -1
     save_loss_train = []
@@ -33,6 +74,9 @@ def train(model, dataloader, loss_function, optimizer,max_epochs, model_dir, tes
     save_train_metric = []
     save_test_metric = []
     train_loader, test_loader = dataloader
+
+    # Initialize GradScaler for mixed precision
+    scaler = GradScaler()
 
     # iterate over the epochs
     for epoch in range(max_epochs):
@@ -52,21 +96,38 @@ def train(model, dataloader, loss_function, optimizer,max_epochs, model_dir, tes
             volume, label = (volume.to(device), label.to(device)) # move data to GPU if available
 
             optimizer.zero_grad() # clear the gradients of all optimized variables
-            outputs = model(volume) # forward pass
-            train_loss = loss_function(outputs, label) # calculate the loss
-
-            train_loss.backward() # Computes gradients of the loss w.r.t. model parameters.
-            optimizer.step()  # update parameters based on gradients and the optimizer
+            # Mixed precision forward pass
+            with autocast(device_type=device.type):  # Enables mixed precision computation for this block
+                outputs = model(volume)
+                train_loss = loss_function(outputs, label)
+            
+            # Backward pass with gradient scaling
+            scaler.scale(train_loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
 
             train_epoch_loss += train_loss.item() # accumulate the loss for the epoch
-            print(
-                f"{train_step}/{len(train_loader) // train_loader.batch_size}, "
-                f"Train_loss: {train_loss.item():.4f}")
+           # print(
+             #   f"{train_step}/{len(train_loader) // train_loader.batch_size}, "
+            #    f"Train_loss: {train_loss.item():.4f}")
             
             # calculate the dice metric for the current batch
             train_metric = dice_metric(outputs, label)
             epoch_metric_train += train_metric
-            print(f"Train_dice:{train_metric:.4f}")
+            #print(f"Train_dice:{train_metric:.4f}")
+            
+            # Log every 'log_freq' batches
+            if train_step % log_freq == 0:
+                print(f"Batch {train_step}/{len(train_loader)}, Loss: {train_loss.item():.4f}, Dice: {train_metric:.4f}")
+                # Log batch-level metrics to WandB
+                if logger:
+                    logger.log({
+                        "batch_train_loss": train_loss.item(),
+                        "batch_train_dice": train_metric,
+                    })
+
+
+         
 
         print('-' * 20)
 
@@ -80,6 +141,30 @@ def train(model, dataloader, loss_function, optimizer,max_epochs, model_dir, tes
 
         save_train_metric.append(epoch_metric_train) # save the dice metric for the epoch
         np.save(os.path.join(model_dir, 'train_metric.npy'), save_train_metric)
+
+        print(f"Epoch {epoch + 1}: Avg Train Loss: {train_epoch_loss:.4f}, Avg Train Dice: {epoch_metric_train:.4f}")
+
+        # Log epoch-level metrics to WandB
+        if logger:
+            logger.log({
+                "epoch": epoch + 1,
+                "train_loss": train_epoch_loss,
+                "train_dice": epoch_metric_train,
+            })
+
+
+        #checkpoint to save model periodically 
+        # Save periodic checkpoints every 10 epochs
+        if (epoch + 1) % 20 == 0:
+            checkpoint_path = os.path.join(model_dir, f"checkpoint_epoch_{epoch + 1:03d}.pth")
+            torch.save({
+                'epoch': epoch + 1,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'train_loss': train_epoch_loss,
+            }, checkpoint_path)
+            print(f"Checkpoint saved at epoch {epoch + 1}")   
+
 
         # for validation
         if(epoch + 1) % test_interval == 0:
@@ -98,11 +183,11 @@ def train(model, dataloader, loss_function, optimizer,max_epochs, model_dir, tes
                     test_label = test_label != 0 # set all non-liver pixels to 0
                     test_volume, test_label = (test_volume.to(device), test_label.to(device)) # move data to GPU if available
 
-                    test_outputs = model(test_volume) # forward pass
+                    with autocast(device_type=device.type):  # Mixed precision inference
+                        test_outputs = model(test_volume)
+                        test_loss = loss_function(test_outputs, test_label)
 
-                    test_loss = loss_function(test_outputs, test_label) # calculate the loss of validation data
                     test_epoch_loss += test_loss.item() # accumulate the loss for the epoch
-
                     test_metric = dice_metric(test_outputs, test_label) # calculate the dice metric for the current test batch
                     epoch_metric_test += test_metric
 
@@ -117,6 +202,19 @@ def train(model, dataloader, loss_function, optimizer,max_epochs, model_dir, tes
                 save_test_metric.append(epoch_metric_test) # save the dice metric for the epoch
                 np.save(os.path.join(model_dir, 'metric_test.npy'), save_test_metric)
 
+                print(f"Validation Epoch {epoch + 1}: Avg Test Loss: {test_epoch_loss:.4f}, Avg Test Dice: {epoch_metric_test:.4f}")
+
+                # Log validation metrics to WandB
+                if logger:
+                    logger.log({
+                        "epoch": epoch + 1,
+                        "test_loss": test_epoch_loss,
+                        "test_dice": epoch_metric_test,
+                    })
+                
+
+               
+
                 if epoch_metric_test > best_metric:
                     best_metric = epoch_metric_test
                     best_metric_epoch = epoch + 1
@@ -125,6 +223,14 @@ def train(model, dataloader, loss_function, optimizer,max_epochs, model_dir, tes
                     f"current epoch: {epoch + 1} current mean dice: {test_metric:.4f}"
                     f"\nbest mean dice: {best_metric:.4f} "
                     f"at epoch: {best_metric_epoch}")
+
+
+
+                if logger:
+                    logger.log({
+                        "final_best_metric": best_metric,
+                        "final_best_metric_epoch": best_metric_epoch,
+                    })
                     
     print(f"train completed, best_metric: {best_metric:.4f} at epoch: {best_metric_epoch}")                
 
@@ -177,8 +283,17 @@ def show_patient(data, SLICE_NUMBER=1, train=True, test=False):
         plt.imshow(view_test_patient["seg"][0, 0, :, :, SLICE_NUMBER])
         plt.show()
 
-"""
+
 def calculate_pixels(data):
+    """
+    Calculate the number of liver and non-liver pixels in a given dataset.
+
+    Parameters:
+        data (DataLoader): DataLoader containing the data.
+
+    Returns:
+        val (numpy.array): A 2-element array containing the number of liver and non-liver pixels, respectively.
+    """
     val = np.zeros((1, 2))
 
     for batch in tqdm(data):
@@ -189,6 +304,5 @@ def calculate_pixels(data):
             count = np.append(count, 0)
         val += count
 
-    print('The last values:', val)
+    #print('The last values:', val)
     return val        
-"""
