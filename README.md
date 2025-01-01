@@ -3,6 +3,9 @@
 This repository provides all the necessary code and resources to perform liver segmentation using the Monai framework and PyTorch. The project is structured to allow customization for segmenting other organs as well.
 
 ---
+### Shoutout 🎉
+
+A special shoutout to [Mohammed El Amine Mokhtari](https://github.com/amine0110) for his great tutorials on medical imaging and computer vision. His work has been an inspiration and a valuable resource for the community! [Youtube Tut](https://www.youtube.com/watch?v=AU4KlXKKnac&list=PLQCkKRar9trOubxZm_gfqWmggW4MgVeqq&index=5)
 
 ## Table of Contents
 
@@ -169,4 +172,3 @@ python train.py
 
 ---
 
-Feel free to explore and customize this repository for your segmentation tasks!
