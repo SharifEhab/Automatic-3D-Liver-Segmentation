@@ -133,7 +133,7 @@ Weights and Biases (WandB) is used for experiment tracking, visualization, and h
 #### Example WandB Dashboard
 
 ##### Adopt and mixed precision training vs Adam with no mixed precision
-![image](https://github.com/user-attachments/assets/ee78b122-5661-4cbb-a266-b124846b4476)
+![image](https://github.com/user-attachments/assets/ea1b2a39-5ba5-43a7-b3e6-69630e2e6675)
 
 
 
