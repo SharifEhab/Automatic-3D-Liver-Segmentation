@@ -82,7 +82,7 @@ Resources for learning about Adopt:
 ## Training and Logging
 
 ### Mixed Precision Training
-Mixed precision training leverages both `float32` and `float16` data types to accelerate training while reducing memory usage. It is implemented using PyTorch’s `torch.cuda.amp` package:
+Mixed precision training leverages both `float32` and `float16` data types to accelerate training while reducing memory usage. It is implemented using PyTorch’s `torch.cuda` package:
 
 - Forward and backward passes are performed in `float16` where possible.
 - Critical computations, such as loss scaling, are performed in `float32` to maintain numerical stability.
@@ -98,7 +98,7 @@ from torch.cuda import autocast, GradScaler
 scaler = GradScaler()
 with autocast(device=device):
     outputs = model(inputs)
-    loss = loss_function(outputs, labels)
+    loss = loss_function(outputs.float(), label.float())
 scaler.scale(loss).backward()
 scaler.step(optimizer)
 scaler.update()
