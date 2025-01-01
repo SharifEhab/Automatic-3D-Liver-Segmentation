@@ -1,0 +1,12 @@
+adopt
+dicom2nifti
+matplotlib
+monai
+nibabel
+numpy
+pydicom
+scipy
+torch
+torchvision
+tqdm
+wandb
