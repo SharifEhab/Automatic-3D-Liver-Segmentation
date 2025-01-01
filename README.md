@@ -130,7 +130,8 @@ Weights and Biases (WandB) is used for experiment tracking, visualization, and h
 #### Example WandB Dashboard
 Below is a sample WandB logging screenshot:
 
-*Include a screenshot of your WandB dashboard.*
+![image](https://github.com/user-attachments/assets/9b66725f-8f56-4b84-9075-b70d82ec9a74)
+
 
 ---
 
