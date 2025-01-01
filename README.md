@@ -131,9 +131,10 @@ Weights and Biases (WandB) is used for experiment tracking, visualization, and h
 - Checkpoints for model performance.
 
 #### Example WandB Dashboard
-Below is a sample WandB logging screenshot:
 
-![image](https://github.com/user-attachments/assets/9b66725f-8f56-4b84-9075-b70d82ec9a74)
+##### Adopt and mixed precision training vs Adam with no mixed precision
+![image](https://github.com/user-attachments/assets/ee78b122-5661-4cbb-a266-b124846b4476)
+
 
 
 ---
